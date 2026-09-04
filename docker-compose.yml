@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  threat_listener:
+    build: .
+    container_name: threat_listener_worker
+    env_file:
+      - .env
+    restart: always
