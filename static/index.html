@@ -7,14 +7,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <style>
-        body { background-color: #f8fafc; color: #0f172a; font-family: system-ui, -apple-system, sans-serif; }
-    </style>
 </head>
-<body class="p-6">
+<body class="bg-slate-50 text-slate-900 font-sans p-6">
     <div class="max-w-7xl mx-auto space-y-6">
         <!-- Header -->
-        <header class="bg-white p-4 rounded-xl shadow-md border border-slate-200 flex justify-between items-center">
+        <header class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
             <div class="flex items-center space-x-4">
                 <img src="/logo.jpg" alt="Vishwas Logo" class="h-12 w-auto object-contain" onerror="this.src='https://via.placeholder.com/50?text=VISHWAS'"/>
                 <div>
@@ -27,23 +24,21 @@
             </div>
         </header>
 
-        <!-- Configuration & Monitoring Controls -->
+        <!-- Controls Grid -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <!-- IMAP Connection Panel -->
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4">
+            <!-- IMAP Settings -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-3">
                 <h2 class="text-lg font-bold text-slate-800 border-b pb-2">IMAP Live Email Sync</h2>
-                <div class="space-y-3">
-                    <input type="text" id="imapServer" value="imap.gmail.com" placeholder="IMAP Host" class="w-full border p-2 rounded-lg text-sm bg-slate-50"/>
-                    <input type="email" id="emailAddr" placeholder="email@gmail.com" class="w-full border p-2 rounded-lg text-sm bg-slate-50"/>
-                    <input type="password" id="emailPass" placeholder="App Password" class="w-full border p-2 rounded-lg text-sm bg-slate-50"/>
-                    <button onclick="connectIMAP()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg text-sm transition">
-                        Connect & Monitor Folders
-                    </button>
-                </div>
+                <input type="text" id="imapServer" value="imap.gmail.com" placeholder="IMAP Host" class="w-full border p-2 rounded-lg text-sm bg-slate-50"/>
+                <input type="email" id="emailAddr" placeholder="email@gmail.com" class="w-full border p-2 rounded-lg text-sm bg-slate-50"/>
+                <input type="password" id="emailPass" placeholder="App Password" class="w-full border p-2 rounded-lg text-sm bg-slate-50"/>
+                <button onclick="connectIMAP()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg text-sm transition">
+                    Connect & Monitor Folders
+                </button>
             </div>
 
-            <!-- File Manual Upload -->
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4">
+            <!-- Manual EML Upload -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-3">
                 <h2 class="text-lg font-bold text-slate-800 border-b pb-2">Manual EML Inspection</h2>
                 <p class="text-xs text-slate-500">Upload `.eml` payload files for instant offline forensic parsing.</p>
                 <input type="file" id="fileInput" accept=".eml" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"/>
@@ -52,10 +47,10 @@
                 </button>
             </div>
 
-            <!-- Global Risk Summary -->
+            <!-- Real-Time Threat Status -->
             <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-between">
                 <h2 class="text-lg font-bold text-slate-800 border-b pb-2">Real-Time Threat Status</h2>
-                <div class="text-center py-4">
+                <div class="text-center py-2">
                     <span id="latestScore" class="text-5xl font-black text-slate-400">00</span>
                     <p class="text-xs font-semibold text-slate-500 uppercase mt-1">Latest Risk Score</p>
                 </div>
@@ -65,7 +60,7 @@
             </div>
         </div>
 
-        <!-- Real-Time Incoming Emails Feed -->
+        <!-- Ingested Emails Stream Table -->
         <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4">
             <h2 class="text-lg font-bold text-slate-800 border-b pb-2">Monitored Mail Stream (Inbox & Spam)</h2>
             <div class="overflow-x-auto">
@@ -87,7 +82,7 @@
         </div>
     </div>
 
-    <!-- Forensic Analysis Modal -->
+    <!-- Forensic Modal Popup -->
     <div id="forensicModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden flex justify-center items-center p-4 z-50">
         <div class="bg-white w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl overflow-y-auto p-6 space-y-6">
             <div class="flex justify-between items-center border-b pb-4">
@@ -115,7 +110,7 @@
                 </div>
             </div>
 
-            <!-- Geolocation Map -->
+            <!-- Leaflet Map Trace -->
             <div class="space-y-2">
                 <h4 class="font-bold text-slate-800">Sender Trace Path & Geolocation Map</h4>
                 <div id="map" class="h-64 w-full rounded-xl border border-slate-200"></div>

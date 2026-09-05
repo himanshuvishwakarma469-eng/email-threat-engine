@@ -13,12 +13,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-# Regex Patterns
+# Regex patterns for fast header parsing
 IPV4_REGEX = re.compile(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b")
 PRIVATE_IP_REGEX = re.compile(r"^(?:127\.|10\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.)")
 URL_REGEX = re.compile(r"https?://[^\s<\"']+", re.IGNORECASE)
 
-app = FastAPI(title="Vishwas - Email Threat Detection Engine")
+app = FastAPI(title="Vishwas - Email Threat & Forensic Intelligence")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,8 +28,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Active IMAP Monitoring state
-IMAP_MONITOR_RUNNING = False
+IMAP_MONITOR_ACTIVE = False
 
 class IMAPCredentials(BaseModel):
     imap_server: str = "imap.gmail.com"
@@ -93,7 +92,7 @@ def extract_body_safely(msg: Any) -> str:
 
 def lookup_ip_geo(ip: str) -> Dict[str, Any]:
     if ip == "127.0.0.1" or PRIVATE_IP_REGEX.match(ip):
-        return {"city": "Internal Node", "country": "Local Network", "isp": "Enterprise LAN", "lat": 28.6139, "lng": 77.2090, "is_anonymized": False}
+        return {"city": "Internal Node", "country": "Local Subnet", "isp": "Enterprise LAN", "lat": 28.6139, "lng": 77.2090, "is_anonymized": False}
     ip_hash = int(hashlib.md5(ip.encode()).hexdigest(), 16)
     locations = [
         {"city": "Frankfurt", "country": "Germany", "lat": 50.1109, "lng": 8.6821, "isp": "HostEurope / Tor Exit"},
@@ -199,24 +198,23 @@ def analyze_email_bytes(content: bytes, source_folder: str = "INBOX") -> Dict[st
     }
 
 async def imap_poller_task(creds: IMAPCredentials):
-    global IMAP_MONITOR_RUNNING
-    IMAP_MONITOR_RUNNING = True
+    global IMAP_MONITOR_ACTIVE
+    IMAP_MONITOR_ACTIVE = True
     seen_uids = set()
 
-    while IMAP_MONITOR_RUNNING:
+    while IMAP_MONITOR_ACTIVE:
         try:
             mail = imaplib.IMAP4_SSL(creds.imap_server)
             mail.login(creds.email_address, creds.password)
 
-            folders_to_check = ["INBOX", "[Gmail]/Spam", "Spam", "Junk"]
-            for folder in folders_to_check:
+            for folder in ["INBOX", "[Gmail]/Spam", "Spam", "Junk"]:
                 status, _ = mail.select(folder)
                 if status != "OK":
                     continue
                 status, messages = mail.search(None, "ALL")
                 if status == "OK" and messages[0]:
                     msg_nums = messages[0].split()
-                    for num in msg_nums[-5:]:  # Poll last 5 emails per folder
+                    for num in msg_nums[-5:]:
                         uid = f"{folder}_{num.decode()}"
                         if uid in seen_uids:
                             continue
@@ -242,11 +240,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.post("/api/v1/connect-email")
 async def connect_email(creds: IMAPCredentials, bg_tasks: BackgroundTasks):
-    global IMAP_MONITOR_RUNNING
-    IMAP_MONITOR_RUNNING = False
+    global IMAP_MONITOR_ACTIVE
+    IMAP_MONITOR_ACTIVE = False
     await asyncio.sleep(1)
     bg_tasks.add_task(imap_poller_task, creds)
-    return {"status": "success", "message": f"Monitoring active for {creds.email_address}"}
+    return {"status": "success", "message": f"Monitoring initialized for {creds.email_address}"}
 
 @app.post("/api/v1/analyze")
 async def analyze_file(file: UploadFile = File(None)):
