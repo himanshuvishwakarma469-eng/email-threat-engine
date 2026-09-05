@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vishwas - AI Email Threat Intelligence Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { background-color: #f8fafc; color: #0f172a; font-family: system-ui, -apple-system, sans-serif; }
+    </style>
+</head>
+<body class="p-6">
+    <div class="max-w-7xl mx-auto space-y-6">
+        <!-- Header -->
+        <header class="bg-white p-4 rounded-xl shadow-md border border-slate-200 flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <img src="/logo.jpg" alt="Vishwas Logo" class="h-12 w-auto object-contain" onerror="this.src='https://via.placeholder.com/50?text=VISHWAS'"/>
+                <div>
+                    <h1 class="text-2xl font-extrabold text-blue-900 tracking-tight">VISHWAS</h1>
+                    <p class="text-xs text-slate-500 font-medium">AI-Powered Email Threat Detection & Forensic Intelligence Platform</p>
+                </div>
+            </div>
+            <div id="ws-status" class="px-4 py-1.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 border border-amber-300">
+                CONNECTING WS...
+            </div>
+        </header>
+
+        <!-- Configuration & Monitoring Controls -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- IMAP Connection Panel -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4">
+                <h2 class="text-lg font-bold text-slate-800 border-b pb-2">IMAP Live Email Sync</h2>
+                <div class="space-y-3">
+                    <input type="text" id="imapServer" value="imap.gmail.com" placeholder="IMAP Host" class="w-full border p-2 rounded-lg text-sm bg-slate-50"/>
+                    <input type="email" id="emailAddr" placeholder="email@gmail.com" class="w-full border p-2 rounded-lg text-sm bg-slate-50"/>
+                    <input type="password" id="emailPass" placeholder="App Password" class="w-full border p-2 rounded-lg text-sm bg-slate-50"/>
+                    <button onclick="connectIMAP()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg text-sm transition">
+                        Connect & Monitor Folders
+                    </button>
+                </div>
+            </div>
+
+            <!-- File Manual Upload -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4">
+                <h2 class="text-lg font-bold text-slate-800 border-b pb-2">Manual EML Inspection</h2>
+                <p class="text-xs text-slate-500">Upload `.eml` payload files for instant offline forensic parsing.</p>
+                <input type="file" id="fileInput" accept=".eml" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"/>
+                <button onclick="uploadEML()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded-lg text-sm transition">
+                    Analyze Payload
+                </button>
+            </div>
+
+            <!-- Global Risk Summary -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-between">
+                <h2 class="text-lg font-bold text-slate-800 border-b pb-2">Real-Time Threat Status</h2>
+                <div class="text-center py-4">
+                    <span id="latestScore" class="text-5xl font-black text-slate-400">00</span>
+                    <p class="text-xs font-semibold text-slate-500 uppercase mt-1">Latest Risk Score</p>
+                </div>
+                <div id="latestThreatLevel" class="text-center font-bold text-sm text-slate-500">
+                    Awaiting Email Stream...
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-Time Incoming Emails Feed -->
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4">
+            <h2 class="text-lg font-bold text-slate-800 border-b pb-2">Monitored Mail Stream (Inbox & Spam)</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm text-slate-600">
+                    <thead class="bg-slate-100 text-slate-700 uppercase text-xs font-bold">
+                        <tr>
+                            <th class="p-3">Folder</th>
+                            <th class="p-3">Subject</th>
+                            <th class="p-3">Sender</th>
+                            <th class="p-3">Risk Score</th>
+                            <th class="p-3">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="emailTableBody" class="divide-y divide-slate-100">
+                        <tr><td colspan="5" class="p-4 text-center text-slate-400">No emails ingested yet.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Forensic Analysis Modal -->
+    <div id="forensicModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden flex justify-center items-center p-4 z-50">
+        <div class="bg-white w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl overflow-y-auto p-6 space-y-6">
+            <div class="flex justify-between items-center border-b pb-4">
+                <div>
+                    <h3 class="text-xl font-bold text-blue-900" id="mSubject">Subject</h3>
+                    <p class="text-xs text-slate-500" id="mHash">Hash</p>
+                </div>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl font-bold">&times;</button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                    <h4 class="font-bold text-slate-800">Fraud & Authentication Metrics</h4>
+                    <p><strong>Risk Score:</strong> <span id="mScore" class="font-extrabold text-red-600"></span></p>
+                    <p><strong>Classification:</strong> <span id="mClass"></span></p>
+                    <p><strong>Threat Actor:</strong> <span id="mActor"></span></p>
+                    <p><strong>Attribution Confidence:</strong> <span id="mConf"></span></p>
+                    <p><strong>SPF / DKIM:</strong> <span id="mAuth"></span></p>
+                </div>
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                    <h4 class="font-bold text-slate-800">NLP & Spoofing Indicators</h4>
+                    <p><strong>Detected NLP Cues:</strong> <span id="mCues" class="text-amber-700 font-semibold"></span></p>
+                    <p><strong>Spoofing Indicators:</strong> <span id="mSpoofing" class="text-red-600 font-semibold"></span></p>
+                    <p><strong>Sender Address:</strong> <span id="mFrom" class="font-mono text-xs"></span></p>
+                </div>
+            </div>
+
+            <!-- Geolocation Map -->
+            <div class="space-y-2">
+                <h4 class="font-bold text-slate-800">Sender Trace Path & Geolocation Map</h4>
+                <div id="map" class="h-64 w-full rounded-xl border border-slate-200"></div>
+            </div>
+
+            <div class="text-right">
+                <button onclick="closeModal()" class="bg-slate-800 text-white px-6 py-2 rounded-lg text-sm font-bold">Close Report</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+        let currentAnalyses = [];
+        let mapInstance = null;
+
+        ws.onopen = () => {
+            const badge = document.getElementById('ws-status');
+            badge.innerText = 'MONITORING ACTIVE';
+            badge.className = 'px-4 py-1.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-300';
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.event === 'new_email_analyzed') {
+                handleEmailIngested(data.payload);
+            }
+        };
+
+        function playAlertSound() {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(880, ctx.currentTime);
+            osc.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.8);
+        }
+
+        async function connectIMAP() {
+            const payload = {
+                imap_server: document.getElementById('imapServer').value,
+                email_address: document.getElementById('emailAddr').value,
+                password: document.getElementById('emailPass').value,
+                poll_interval: 15
+            };
+            const res = await fetch('/api/v1/connect-email', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            alert(data.message);
+        }
+
+        async function uploadEML() {
+            const fileInput = document.getElementById('fileInput');
+            const formData = new FormData();
+            if (fileInput.files[0]) formData.append('file', fileInput.files[0]);
+
+            await fetch('/api/v1/analyze', { method: 'POST', body: formData });
+        }
+
+        function handleEmailIngested(payload) {
+            currentAnalyses.unshift(payload);
+            document.getElementById('latestScore').innerText = payload.risk_score;
+            document.getElementById('latestThreatLevel').innerText = payload.threat_level;
+
+            if (payload.risk_score > 70) {
+                playAlertSound();
+                showForensicModal(payload);
+            }
+
+            renderTable();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('emailTableBody');
+            tbody.innerHTML = '';
+            currentAnalyses.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition';
+                tr.innerHTML = `
+                    <td class="p-3"><span class="px-2 py-1 rounded text-xs font-bold bg-slate-100">${item.folder || 'INBOX'}</span></td>
+                    <td class="p-3 font-semibold text-slate-800">${item.subject}</td>
+                    <td class="p-3 text-xs font-mono">${item.headers.from_address}</td>
+                    <td class="p-3 font-bold ${item.risk_score > 70 ? 'text-red-600' : 'text-emerald-600'}">${item.risk_score}/100</td>
+                    <td class="p-3"><button onclick="showForensicModalByIndex(${index})" class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold px-3 py-1 rounded">Report</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function showForensicModalByIndex(idx) {
+            showForensicModal(currentAnalyses[idx]);
+        }
+
+        function showForensicModal(data) {
+            document.getElementById('mSubject').innerText = data.subject;
+            document.getElementById('mHash').innerText = `SHA256: ${data.chain_of_custody_hash}`;
+            document.getElementById('mScore').innerText = `${data.risk_score}/100 (${data.threat_level})`;
+            document.getElementById('mClass').innerText = data.classification;
+            document.getElementById('mActor').innerText = data.threat_actor;
+            document.getElementById('mConf').innerText = data.attribution_confidence;
+            document.getElementById('mAuth').innerText = `SPF: ${data.headers.spf_status} | DKIM: ${data.headers.dkim_status}`;
+            document.getElementById('mCues').innerText = data.nlp_cues.join(', ') || 'None';
+            document.getElementById('mSpoofing').innerText = data.spoofing_indicators.join(', ');
+            document.getElementById('mFrom').innerText = data.headers.from_address;
+
+            document.getElementById('forensicModal').classList.remove('hidden');
+
+            setTimeout(() => {
+                if (mapInstance) mapInstance.remove();
+                mapInstance = L.map('map').setView([20, 0], 2);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstance);
+
+                const latlngs = [];
+                data.geo_hops.forEach((hop) => {
+                    const pt = [hop.lat, hop.lng];
+                    latlngs.push(pt);
+                    L.marker(pt).addTo(mapInstance).bindPopup(`<b>Hop ${hop.hop}: ${hop.city}, ${hop.country}</b><br>IP: ${hop.ip}<br>ISP: ${hop.isp}`);
+                });
+                if (latlngs.length > 1) {
+                    L.polyline(latlngs, {color: 'red', weight: 3}).addTo(mapInstance);
+                }
+            }, 200);
+        }
+
+        function closeModal() {
+            document.getElementById('forensicModal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
