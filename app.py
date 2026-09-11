@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 import imaplib
 import email
 from email.header import decode_header
+import re
 import uvicorn
 
 app = FastAPI(title="Real-Time Email & Spam Threat Dashboard")
@@ -40,7 +41,11 @@ def evaluate_threat(msg, folder_origin="INBOX"):
 
     score = 0
     cues = []
-    keywords = ["invoice", "wire", "urgent", "bank", "transfer", "ceo", "payment", "verify account", "unauthorized login", "crypto", "payroll", "winner", "prize", "claim", "credentials", "suspension"]
+    keywords = [
+        "invoice", "wire", "urgent", "bank", "transfer", "ceo", "payment", 
+        "verify account", "unauthorized login", "crypto", "payroll", 
+        "winner", "prize", "claim", "credentials", "suspension"
+    ]
     content = f"{subject} {body}".lower()
 
     for kw in keywords:
@@ -116,6 +121,8 @@ def login_page():
 
 @app.post("/dashboard", response_class=HTMLResponse)
 def dashboard_page(imap_server: str = Form(...), email_account: str = Form(...), app_password: str = Form(...)):
+    # Sanitize inputs on submission
+    clean_password = app_password.replace(" ", "").strip()
     return f"""
     <!DOCTYPE html>
     <html>
@@ -163,7 +170,7 @@ def dashboard_page(imap_server: str = Form(...), email_account: str = Form(...),
 
             async function checkInboxAndSpam() {{
                 try {{
-                    let res = await fetch('/api/check-inbox?server={imap_server}&email={email_account}&pass={app_password}');
+                    let res = await fetch('/api/check-inbox?server={imap_server.strip()}&email={email_account.strip()}&pass={clean_password}');
                     let data = await res.json();
                     
                     if (data.status === 'error') {{
@@ -172,6 +179,9 @@ def dashboard_page(imap_server: str = Form(...), email_account: str = Form(...),
                         errDiv.innerText = 'IMAP Error: ' + data.message;
                         return;
                     }}
+
+                    let errDiv = document.getElementById('error-banner');
+                    errDiv.style.display = 'none';
 
                     if (data.status === 'ok' && data.emails.length > 0) {{
                         let container = document.getElementById('threat-feed');
@@ -212,7 +222,7 @@ def dashboard_page(imap_server: str = Form(...), email_account: str = Form(...),
                     }}
                 }} catch (e) {{ console.error("Polling error", e); }}
             }}
-            setInterval(checkInboxAndSpam, 4000);
+            setInterval(checkInboxAndSpam, 5000);
             window.onload = checkInboxAndSpam;
         </script>
     </head>
@@ -222,7 +232,7 @@ def dashboard_page(imap_server: str = Form(...), email_account: str = Form(...),
         <div id="error-banner" class="error-box"></div>
         <div id="alert-banner" class="alert-banner">🚨 CRITICAL THREAT / PHISHING EMAIL DETECTED IN MAILBOX</div>
         <div id="threat-feed">
-            <div class="card">Scanning Inbox & Spam folders... (Polling every 4 seconds)</div>
+            <div class="card">Scanning Inbox & Spam folders... (Polling every 5 seconds)</div>
         </div>
     </body>
     </html>
@@ -231,21 +241,40 @@ def dashboard_page(imap_server: str = Form(...), email_account: str = Form(...),
 @app.get("/api/check-inbox")
 def check_inbox(
     server: str = Query(...), 
-    email: str = Query(...), 
+    email_param: str = Query(..., alias="email"), 
     pass_param: str = Query(..., alias="pass")
 ):
     try:
-        mail = imaplib.IMAP4_SSL(server)
-        mail.login(email, pass_param)
+        # Sanitize credential inputs
+        clean_server = server.strip()
+        clean_email = email_param.strip()
+        clean_pass = pass_param.replace(" ", "").strip()
+
+        mail = imaplib.IMAP4_SSL(clean_server, 993)
+        mail.login(clean_email, clean_pass)
         
         results = []
         
-        # Explicit target folders for Gmail IMAP
-        target_folders = ['INBOX', '"[Gmail]/Spam"', '"[Gmail]/All Mail"']
+        # Dynamically discover spam/junk/inbox folders
+        target_folders = ["INBOX"]
+        status, folder_list = mail.list()
+        if status == "OK":
+            for folder in folder_list:
+                folder_str = folder.decode('utf-8', errors='ignore')
+                if any(k in folder_str.lower() for k in ["spam", "junk"]):
+                    match = re.search(r'\"([^\"]+)\"$|(\S+)$', folder_str)
+                    if match:
+                        parsed_folder = match.group(1) or match.group(2)
+                        target_folders.append(parsed_folder)
+
+        # De-duplicate targeted folders
+        target_folders = list(dict.fromkeys(target_folders))
 
         for f_name in target_folders:
             try:
-                res, _ = mail.select(f_name, readonly=True)
+                # Wrap folder name in quotes if necessary
+                folder_target = f'"{f_name}"' if " " in f_name and not f_name.startswith('"') else f_name
+                res, _ = mail.select(folder_target, readonly=True)
                 if res != "OK":
                     continue
                 
@@ -253,12 +282,13 @@ def check_inbox(
                 if status == "OK" and messages[0]:
                     mail_ids = messages[0].split()[-5:] # Inspect 5 latest emails per folder
                     for num in reversed(mail_ids):
-                        status, data = mail.fetch(num, '(RFC822)')
-                        if status == "OK":
+                        # Fetch without changing UNSEEN state
+                        status, data = mail.fetch(num, '(BODY.PEEK[])')
+                        if status == "OK" and data[0]:
                             raw = data[0][1]
                             msg_obj = email.message_from_bytes(raw)
-                            clean_folder_label = f_name.replace('"', '').replace('[Gmail]/', '')
-                            results.append(evaluate_threat(msg_obj, folder_origin=clean_folder_label))
+                            clean_label = f_name.replace('[Gmail]/', '').replace('"', '')
+                            results.append(evaluate_threat(msg_obj, folder_origin=clean_label))
             except Exception as folder_err:
                 print(f"Folder selection error for {f_name}: {folder_err}")
                 continue
@@ -271,4 +301,4 @@ def check_inbox(
         return {"status": "error", "message": str(e), "emails": []}
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
