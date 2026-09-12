@@ -1108,14 +1108,23 @@ def dashboard_app():
         }
 
         function switchTab(tabId) {
+          // Hide all tabs
           document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+          
+          // Remove active class from all sidebar buttons
           document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
 
+          // Show targeted tab
           const selectedTab = document.getElementById(`tab-${tabId}`);
           const selectedNav = document.getElementById(`nav-${tabId}`);
 
-          if (selectedTab) selectedTab.classList.remove('hidden');
-          if (selectedNav) selectedNav.classList.add('active');
+          if (selectedTab) {
+            selectedTab.classList.remove('hidden');
+          }
+          
+          if (selectedNav) {
+            selectedNav.classList.add('active');
+          }
 
           const titles = {
             'async-imap': ['Async IMAP Mail Ingestion', 'Automated Multi-Vector Threat Detection & Real-Time Incident Analysis'],
@@ -1454,31 +1463,34 @@ def dashboard_app():
           document.getElementById('top-threat-severity-badge').className = topThreat.risk_score >= 50 ? 'text-xs font-bold text-red-400 bg-red-500/10 px-3 py-1 rounded-full border border-red-500/20' : 'text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20';
           document.getElementById('top-threat-desc').innerText = `Highest Risk Sender: ${topThreat.from}\nSubject: ${topThreat.subject}\nDetected Cues: ${topThreat.cues}`;
 
-          const emailCardsHtml = emails.map((item, idx) => `
-            <div class="ui-card p-5 space-y-3 hover:border-blue-500/50 transition">
-              <div class="flex justify-between items-start">
-                <div>
-                  <span class="text-[10px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wider ${item.risk_score >= 50 ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}">
-                    ${item.severity} (${item.risk_score}%)
-                  </span>
-                  <h4 class="font-bold text-sm mt-2">${item.subject}</h4>
-                  <p class="text-xs text-[var(--text-muted)] font-mono mt-0.5">From: ${item.from}</p>
+          const emailCardsHtml = emails.map((item, idx) => {
+            const safeItem = JSON.stringify(item).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+            return `
+              <div class="ui-card p-5 space-y-3 hover:border-blue-500/50 transition">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <span class="text-[10px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wider ${item.risk_score >= 50 ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}">
+                      ${item.severity} (${item.risk_score}%)
+                    </span>
+                    <h4 class="font-bold text-sm mt-2">${item.subject}</h4>
+                    <p class="text-xs text-[var(--text-muted)] font-mono mt-0.5">From: ${item.from}</p>
+                  </div>
+                  <button onclick='inspectForensics(${safeItem})' class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg transition shrink-0">
+                    Inspect Threat
+                  </button>
                 </div>
-                <button onclick='inspectForensics(${JSON.stringify(item).replace(/'/g, "&apos;")})' class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg transition shrink-0">
-                  Inspect Threat
-                </button>
+                <p class="text-xs text-[var(--text-muted)] font-mono leading-relaxed bg-[var(--input-bg)] p-3 rounded-lg border border-[var(--border-color)]">
+                  "${item.body_preview}"
+                </p>
+                <div class="flex items-center space-x-4 text-[10px] text-[var(--text-muted)] font-mono">
+                  <span>Folder: ${item.folder}</span>
+                  <span>SPF: ${item.spf}</span>
+                  <span>DKIM: ${item.dkim}</span>
+                  <span>Cues: ${item.cues}</span>
+                </div>
               </div>
-              <p class="text-xs text-[var(--text-muted)] font-mono leading-relaxed bg-[var(--input-bg)] p-3 rounded-lg border border-[var(--border-color)]">
-                "${item.body_preview}"
-              </p>
-              <div class="flex items-center space-x-4 text-[10px] text-[var(--text-muted)] font-mono">
-                <span>Folder: ${item.folder}</span>
-                <span>SPF: ${item.spf}</span>
-                <span>DKIM: ${item.dkim}</span>
-                <span>Cues: ${item.cues}</span>
-              </div>
-            </div>
-          `).join('');
+            `;
+          }).join('');
 
           if (asyncFeed) asyncFeed.innerHTML = emailCardsHtml;
           if (streamFeed) streamFeed.innerHTML = emailCardsHtml;
