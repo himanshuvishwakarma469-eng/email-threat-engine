@@ -12,7 +12,9 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
-from google import genai 
+
+# Replaced Google GenAI with AsyncGroq
+from groq import AsyncGroq
 
 app = FastAPI(title="VISHWAS - Threat & Forensics Engine V2.0")
 
@@ -21,8 +23,8 @@ STATIC_DIR = "/home/himanshu/email_threat_engine/static"
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# Initialize Gemini Client (Uses GEMINI_API_KEY from environment variables)
-client = genai.Client()
+# Initialize Async Groq Client (Reads GROQ_API_KEY automatically from environment)
+groq_client = AsyncGroq()
 
 # Global state to store background worker status & ingested threats
 WORKER_STATE = {
@@ -55,20 +57,28 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
-    """Integrates Gemini API asynchronously to process user queries dynamically."""
+    """Integrates Groq API asynchronously to process user queries dynamically using Llama-3.3-70b."""
     try:
-        response = await client.aio.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=request.message,
-            config={
-                "system_instruction": (
-                    "You are an expert Cyber Security Assistant for the VISHWAS Threat Engine. "
-                    "Provide clear, professional, and concise advice regarding phishing, email fraud, "
-                    "MIME header analysis, and incident triage. Keep responses well-formatted and brief."
-                )
-            },
+        response = await groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert Cyber Security Assistant for the VISHWAS Threat Engine. "
+                        "Provide clear, professional, and concise advice regarding phishing, email fraud, "
+                        "MIME header analysis, and incident triage. Keep responses well-formatted and brief."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": request.message,
+                },
+            ],
+            temperature=0.3,
+            max_tokens=500,
         )
-        return {"response": response.text}
+        return {"response": response.choices[0].message.content}
     except Exception as e:
         return {"response": f"Error connecting to Cyber AI Engine: {str(e)}"}
 
@@ -1133,6 +1143,49 @@ def dashboard_app():
           if (window.lucide) lucide.createIcons();
         }
 
+        async function sendChat() {
+          const input = document.getElementById('chat-input');
+          const box = document.getElementById('chat-box');
+          const msg = input.value.trim();
+          if (!msg) return;
+
+          box.innerHTML += `
+            <div class="flex space-x-3 justify-end">
+              <div class="bg-blue-600 text-white rounded-2xl rounded-tr-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-sm">
+                ${msg}
+              </div>
+            </div>`;
+          input.value = '';
+          box.scrollTop = box.scrollHeight;
+
+          try {
+            const res = await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: msg })
+            });
+            const data = await res.json();
+            
+            box.innerHTML += `
+              <div class="flex space-x-3">
+                <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-md">AI</div>
+                <div class="bot-bubble rounded-2xl rounded-tl-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-sm">
+                  ${data.response}
+                </div>
+              </div>`;
+            box.scrollTop = box.scrollHeight;
+          } catch(e) {
+            box.innerHTML += `
+              <div class="flex space-x-3">
+                <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-md">AI</div>
+                <div class="bot-bubble rounded-2xl rounded-tl-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-sm text-red-400">
+                  Error sending request to Cyber AI Engine.
+                </div>
+              </div>`;
+            box.scrollTop = box.scrollHeight;
+          }
+        }
+
         async function triggerBlockAgent() {
           const btn = document.getElementById('btn-block-agent');
           const status = document.getElementById('status-block-agent');
@@ -1295,7 +1348,7 @@ def dashboard_app():
           await fetch('/api/start-worker', { method: 'POST', body: formData });
           document.getElementById('banner-text').innerText = "Continuous Polling Started in Background (checking every 5s)...";
           document.getElementById('banner-badge').innerText = "Worker Status: ACTIVE";
-          document.getElementById('banner-badge').className = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider";
+          document.getElementById('banner-badge').className = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider";
         }
 
         async function pollWorkerStatus() {
@@ -1429,59 +1482,7 @@ def dashboard_app():
             <p class="text-emerald-500 font-bold">[+] RFC822 MIME Structure Validated Successfully</p>
             <p class="text-[var(--text-muted)] mt-1">Parsing Headers & Multipart Boundaries...</p>
             <p class="text-blue-400 mt-1">Payload Length: ${raw.length} bytes</p>
-            <p class="text-amber-500 mt-2">SPF Check Result: Evaluated via custom heuristics rule set.</p>
           `;
-        }
-
-        async function sendChat() {
-          const input = document.getElementById('chat-input');
-          const box = document.getElementById('chat-box');
-          const val = input.value.trim();
-          if (!val) return;
-
-          box.innerHTML += `
-            <div class="flex space-x-3 justify-end">
-              <div class="bg-blue-600 text-white rounded-2xl rounded-tr-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-md">
-                ${val.replace(/</g, "&lt;")}
-              </div>
-            </div>`;
-          
-          input.value = '';
-          box.scrollTop = box.scrollHeight;
-
-          const loadingId = 'loading-' + Date.now();
-          box.innerHTML += `
-            <div id="${loadingId}" class="flex space-x-3">
-              <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-md">AI</div>
-              <div class="bot-bubble rounded-2xl rounded-tl-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-sm">
-                Analyzing threat stream...
-              </div>
-            </div>`;
-          box.scrollTop = box.scrollHeight;
-
-          try {
-            const res = await fetch('/api/chat', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ message: val })
-            });
-            const data = await res.json();
-
-            const loadingEl = document.getElementById(loadingId);
-            if (loadingEl) {
-              loadingEl.querySelector('.bot-bubble').innerText = data.response;
-            }
-          } catch (err) {
-            const loadingEl = document.getElementById(loadingId);
-            if (loadingEl) {
-              loadingEl.querySelector('.bot-bubble').innerText = "Unable to connect to Cyber AI Assistant.";
-            }
-          }
-          box.scrollTop = box.scrollHeight;
-        }
-
-        function triggerAlertDemo() {
-          alert("VISHWAS Threat Engine V2.0 Operating Normally. All background worker nodes are synchronized.");
         }
       </script>
     </body>
@@ -1490,4 +1491,4 @@ def dashboard_app():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
