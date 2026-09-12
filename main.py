@@ -12,8 +12,6 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
-
-# Replaced Google GenAI with AsyncGroq
 from groq import AsyncGroq
 
 app = FastAPI(title="VISHWAS - Threat & Forensics Engine V2.0")
@@ -23,7 +21,7 @@ STATIC_DIR = "/home/himanshu/email_threat_engine/static"
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# Initialize Async Groq Client (Reads GROQ_API_KEY automatically from environment)
+# Initialize Groq Async Client (Uses GROQ_API_KEY from environment variables)
 groq_client = AsyncGroq()
 
 # Global state to store background worker status & ingested threats
@@ -57,7 +55,7 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
-    """Integrates Groq API asynchronously to process user queries dynamically using Llama-3.3-70b."""
+    """Integrates Groq API asynchronously to process user queries dynamically."""
     try:
         response = await groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -76,7 +74,6 @@ async def chat_endpoint(request: ChatRequest):
                 },
             ],
             temperature=0.3,
-            max_tokens=500,
         )
         return {"response": response.choices[0].message.content}
     except Exception as e:
@@ -1143,49 +1140,6 @@ def dashboard_app():
           if (window.lucide) lucide.createIcons();
         }
 
-        async function sendChat() {
-          const input = document.getElementById('chat-input');
-          const box = document.getElementById('chat-box');
-          const msg = input.value.trim();
-          if (!msg) return;
-
-          box.innerHTML += `
-            <div class="flex space-x-3 justify-end">
-              <div class="bg-blue-600 text-white rounded-2xl rounded-tr-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-sm">
-                ${msg}
-              </div>
-            </div>`;
-          input.value = '';
-          box.scrollTop = box.scrollHeight;
-
-          try {
-            const res = await fetch('/api/chat', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ message: msg })
-            });
-            const data = await res.json();
-            
-            box.innerHTML += `
-              <div class="flex space-x-3">
-                <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-md">AI</div>
-                <div class="bot-bubble rounded-2xl rounded-tl-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-sm">
-                  ${data.response}
-                </div>
-              </div>`;
-            box.scrollTop = box.scrollHeight;
-          } catch(e) {
-            box.innerHTML += `
-              <div class="flex space-x-3">
-                <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-md">AI</div>
-                <div class="bot-bubble rounded-2xl rounded-tl-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-sm text-red-400">
-                  Error sending request to Cyber AI Engine.
-                </div>
-              </div>`;
-            box.scrollTop = box.scrollHeight;
-          }
-        }
-
         async function triggerBlockAgent() {
           const btn = document.getElementById('btn-block-agent');
           const status = document.getElementById('status-block-agent');
@@ -1209,7 +1163,7 @@ def dashboard_app():
 
             outContainer.classList.remove('hidden');
             outTitle.innerText = "Block Agent Execution Results";
-            outContent.innerText = `${data.message}\\n\\nBlocked Domains:\\n${data.blocked_domains.length > 0 ? data.blocked_domains.join('\\n') : 'None'}`;
+            outContent.innerText = `${data.message}\n\nBlocked Domains:\n${data.blocked_domains.length > 0 ? data.blocked_domains.join('\n') : 'None'}`;
           } catch (err) {
             status.innerText = "ERROR";
             ctrlStatus.innerText = "Block Agent Error: Execution failed.";
@@ -1482,13 +1436,64 @@ def dashboard_app():
             <p class="text-emerald-500 font-bold">[+] RFC822 MIME Structure Validated Successfully</p>
             <p class="text-[var(--text-muted)] mt-1">Parsing Headers & Multipart Boundaries...</p>
             <p class="text-blue-400 mt-1">Payload Length: ${raw.length} bytes</p>
+            <p class="text-amber-500 mt-2">SPF Check Result: Evaluated via custom heuristics rule set.</p>
           `;
+        }
+
+        async function sendChat() {
+          const input = document.getElementById('chat-input');
+          const box = document.getElementById('chat-box');
+          const val = input.value.trim();
+          if (!val) return;
+
+          box.innerHTML += `
+            <div class="flex space-x-3 justify-end">
+              <div class="bg-blue-600 text-white rounded-2xl rounded-tr-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-md">
+                ${val.replace(/</g, "&lt;")}
+              </div>
+            </div>
+          `;
+
+          input.value = "";
+          box.scrollTop = box.scrollHeight;
+
+          try {
+            const res = await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: val })
+            });
+            const data = await res.json();
+
+            box.innerHTML += `
+              <div class="flex space-x-3">
+                <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-md">
+                  AI
+                </div>
+                <div class="bot-bubble rounded-2xl rounded-tl-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-sm">
+                  ${data.response.replace(/\n/g, "<br>")}
+                </div>
+              </div>
+            `;
+            box.scrollTop = box.scrollHeight;
+          } catch(err) {
+            box.innerHTML += `
+              <div class="flex space-x-3">
+                <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-md">
+                  AI
+                </div>
+                <div class="bot-bubble rounded-2xl rounded-tl-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-sm text-red-400">
+                  Failed to receive response from Cyber AI Engine. Check server connectivity.
+                </div>
+              </div>
+            `;
+            box.scrollTop = box.scrollHeight;
+          }
         }
       </script>
     </body>
     </html>
     """
-
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
