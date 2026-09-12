@@ -14,9 +14,6 @@ from pydantic import BaseModel
 import uvicorn
 from google import genai 
 
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-
 app = FastAPI(title="VISHWAS - Threat & Forensics Engine V2.0")
 
 # Mount Static Files from /home/himanshu/email_threat_engine/static
@@ -61,7 +58,7 @@ async def chat_endpoint(request: ChatRequest):
     """Integrates Gemini API asynchronously to process user queries dynamically."""
     try:
         response = await client.aio.models.generate_content(
-            model="gemini-3.6-flash",
+            model="gemini-2.5-flash",
             contents=request.message,
             config={
                 "system_instruction": (
@@ -579,7 +576,6 @@ def dashboard_app():
       <aside class="w-68 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] flex flex-col justify-between shrink-0 shadow-lg z-10">
         <div>
           <div class="p-6 border-b border-[var(--border-color)] flex items-center space-x-3">
-            <!-- Updated to logo.jpg as found in static folder[cite: 9] -->
             <img src="/static/logo.jpg" alt="Logo" class="w-9 h-9 rounded-xl object-contain shadow-md bg-blue-600/10 p-1" onerror="this.onerror=null; this.src='https://via.placeholder.com/36?text=V';" />
             <div>
               <h1 class="font-extrabold text-base tracking-tight leading-none">VISHWAS</h1>
@@ -1299,7 +1295,7 @@ def dashboard_app():
           await fetch('/api/start-worker', { method: 'POST', body: formData });
           document.getElementById('banner-text').innerText = "Continuous Polling Started in Background (checking every 5s)...";
           document.getElementById('banner-badge').innerText = "Worker Status: ACTIVE";
-          document.getElementById('banner-badge').className = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider";
+          document.getElementById('banner-badge').className = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider";
         }
 
         async function pollWorkerStatus() {
