@@ -16,12 +16,12 @@ from groq import AsyncGroq
 
 app = FastAPI(title="VISHWAS - Threat & Forensics Engine V2.0")
 
-# Mount Static Files from /home/himanshu/email_threat_engine/static
+# Mount Static Files
 STATIC_DIR = "/home/himanshu/email_threat_engine/static"
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# Initialize Groq Async Client (Uses GROQ_API_KEY from environment variables)
+# Initialize Groq Async Client
 groq_client = AsyncGroq()
 
 # Global state to store background worker status & ingested threats
@@ -664,7 +664,7 @@ def dashboard_app():
             <span>Engine Status</span>
             <span id="engine-dot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
           </div>
-          <button onclick="triggerAlertDemo()" id="engine-status-btn" class="w-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg py-2 text-xs font-bold text-center block tracking-wide">
+          <button onclick="pollWorkerStatus()" id="engine-status-btn" class="w-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg py-2 text-xs font-bold text-center block tracking-wide">
             ACTIVE MONITORING
           </button>
         </div>
@@ -1048,7 +1048,7 @@ def dashboard_app():
 
       <!-- FRAUD MAIL POPUP MODAL -->
       <div id="fraud-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-        <div class="ui-card max-w-lg w-full p-6 space-y-4 border-2 border-red-500 shadow-2xl bg-[var(--bg-card)] animate-bounce">
+        <div class="ui-card max-w-lg w-full p-6 space-y-4 border-2 border-red-500 shadow-2xl bg-[var(--bg-card)]">
           <div class="flex items-center space-x-3 text-red-500">
             <i data-lucide="alert-octagon" class="w-8 h-8 animate-pulse"></i>
             <div>
@@ -1431,12 +1431,29 @@ def dashboard_app():
             return;
           }
 
+          const getHeader = (headerName) => {
+            const match = raw.match(new RegExp(`^${headerName}:\\s*(.*)$`, 'mi'));
+            return match ? match[1].trim() : 'Not Found';
+          };
+
+          const fromVal = getHeader('From');
+          const subjectVal = getHeader('Subject');
+          const dateVal = getHeader('Date');
+          const returnPathVal = getHeader('Return-Path');
+          const contentTypeVal = getHeader('Content-Type');
+
           out.classList.remove('hidden');
           out.innerHTML = `
             <p class="text-emerald-500 font-bold">[+] RFC822 MIME Structure Validated Successfully</p>
-            <p class="text-[var(--text-muted)] mt-1">Parsing Headers & Multipart Boundaries...</p>
-            <p class="text-blue-400 mt-1">Payload Length: ${raw.length} bytes</p>
-            <p class="text-amber-500 mt-2">SPF Check Result: Evaluated via custom heuristics rule set.</p>
+            <div class="mt-2 space-y-1 text-[var(--text-main)]">
+              <p><strong>From:</strong> ${fromVal}</p>
+              <p><strong>Subject:</strong> ${subjectVal}</p>
+              <p><strong>Date:</strong> ${dateVal}</p>
+              <p><strong>Return-Path:</strong> ${returnPathVal}</p>
+              <p><strong>Content-Type:</strong> ${contentTypeVal}</p>
+            </div>
+            <p class="text-blue-400 mt-2">Payload Length: ${raw.length} bytes</p>
+            <p class="text-amber-500 mt-1">SPF Check Result: Evaluated via custom heuristics rule set.</p>
           `;
         }
 
