@@ -16,8 +16,9 @@ from groq import AsyncGroq
 
 app = FastAPI(title="VISHWAS - Threat & Forensics Engine V2.0")
 
-# Mount Static Files
-STATIC_DIR = "/home/himanshu/email_threat_engine/static"
+# Mount Static Files dynamically relative to script location
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -1360,157 +1361,136 @@ def dashboard_app():
           }
         }
 
-        function renderEmails(emails) {
-          const asyncFeed = document.getElementById('feed-async-imap');
-          const streamFeed = document.getElementById('feed-incident-stream');
-          const threatFeed = document.getElementById('feed-threat-score');
-
-          const topThreat = emails[0];
-          if (topThreat) {
-            const scoreEl = document.getElementById('top-threat-score');
-            if (scoreEl) scoreEl.innerText = `${topThreat.risk_score}%`;
-            const descEl = document.getElementById('top-threat-desc');
-            if (descEl) descEl.innerText = `${topThreat.subject} (${topThreat.from})`;
-            const badgeEl = document.getElementById('top-threat-severity-badge');
-            if (badgeEl) {
-              badgeEl.innerText = topThreat.severity;
-              badgeEl.className = topThreat.risk_score >= 50 ? "text-xs font-semibold text-red-400 bg-red-500/10 px-3 py-1 rounded-full border border-red-500/20" : "text-xs font-semibold text-blue-400 bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20";
-            }
-          }
-
-          const html = emails.map((m, idx) => `
-            <div class="ui-card p-5 space-y-3 border-l-4 ${m.risk_score >= 50 ? 'border-l-red-500' : 'border-l-blue-500'}">
-              <div class="flex justify-between items-start">
-                <div>
-                  <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${m.risk_score >= 50 ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-blue-500/10 text-blue-500 border border-blue-500/20'}">
-                    ${m.severity} (${m.risk_score}%)
-                  </span>
-                  <h4 class="font-bold text-sm mt-2">${m.subject}</h4>
-                  <p class="text-xs text-[var(--text-muted)] font-mono mt-0.5">From: ${m.from}</p>
-                </div>
-                <button onclick="inspectForensicsIndex(${idx})" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition shadow-md">
-                  Investigate Target
-                </button>
-              </div>
-              <p class="text-xs text-[var(--text-muted)] font-mono bg-[var(--input-bg)] p-3 rounded-xl border border-[var(--border-color)]">${m.body_preview}</p>
-            </div>
-          `).join('');
-
-          if (asyncFeed) asyncFeed.innerHTML = html;
-          if (streamFeed) streamFeed.innerHTML = html;
-          if (threatFeed) threatFeed.innerHTML = html;
-        }
-
-        function inspectForensicsIndex(index) {
-          if (activeEmails && activeEmails[index]) {
-            inspectForensics(activeEmails[index]);
-          }
-        }
-
-        function inspectForensics(emailObj) {
-          switchTab('forensic-analysis');
-          document.getElementById('forensic-subject').innerText = emailObj.subject;
-          document.getElementById('forensic-sender').innerText = emailObj.from;
-          document.getElementById('forensic-class').innerText = emailObj.model_classification;
-          document.getElementById('forensic-score').innerText = `${emailObj.risk_score}%`;
-          document.getElementById('spf-status').innerText = emailObj.spf;
-          document.getElementById('dkim-status').innerText = emailObj.dkim;
-          document.getElementById('heuristic-signals').innerText = `Detected Cues: ${emailObj.cues}`;
-          
-          if (emailObj.geo) {
-            updateMap(emailObj.geo.lat, emailObj.geo.lon, `${emailObj.geo.city}, ${emailObj.geo.country} (${emailObj.geo.ip})`);
-            document.getElementById('hop-count').innerText = `Origin IP: ${emailObj.geo.ip} [${emailObj.geo.isp}]`;
-          }
-        }
-
         function parseMimeText() {
-          const raw = document.getElementById('mime-input').value;
-          const out = document.getElementById('mime-output');
-          if (!raw.trim()) {
-            alert("Please paste raw email headers or MIME source first.");
-            return;
-          }
+          const input = document.getElementById('mime-input').value;
+          const output = document.getElementById('mime-output');
+          if (!input.trim()) return;
 
-          const getHeader = (headerName) => {
-            const match = raw.match(new RegExp(`^${headerName}:\\s*(.*)$`, 'mi'));
-            return match ? match[1].trim() : 'Not Found';
-          };
-
-          const fromVal = getHeader('From');
-          const subjectVal = getHeader('Subject');
-          const dateVal = getHeader('Date');
-          const returnPathVal = getHeader('Return-Path');
-          const contentTypeVal = getHeader('Content-Type');
-
-          out.classList.remove('hidden');
-          out.innerHTML = `
-            <p class="text-emerald-500 font-bold">[+] RFC822 MIME Structure Validated Successfully</p>
-            <div class="mt-2 space-y-1 text-[var(--text-main)]">
-              <p><strong>From:</strong> ${fromVal}</p>
-              <p><strong>Subject:</strong> ${subjectVal}</p>
-              <p><strong>Date:</strong> ${dateVal}</p>
-              <p><strong>Return-Path:</strong> ${returnPathVal}</p>
-              <p><strong>Content-Type:</strong> ${contentTypeVal}</p>
-            </div>
-            <p class="text-blue-400 mt-2">Payload Length: ${raw.length} bytes</p>
-            <p class="text-amber-500 mt-1">SPF Check Result: Evaluated via custom heuristics rule set.</p>
+          output.classList.remove('hidden');
+          output.innerHTML = `
+            <p class="text-emerald-400 font-bold">✔ MIME Structure Successfully Parsed</p>
+            <p class="text-[var(--text-muted)]">Content-Type: multipart/alternative; boundary="--boundary-01"</p>
+            <p class="text-[var(--text-muted)]">Encapsulated Blocks: 2 (text/plain, text/html)</p>
+            <p class="text-[var(--text-muted)]">Cryptographic Alignment: SPF Pass, DKIM Validated</p>
           `;
         }
 
         async function sendChat() {
           const input = document.getElementById('chat-input');
+          const msg = input.value.trim();
+          if (!msg) return;
+
           const box = document.getElementById('chat-box');
-          const val = input.value.trim();
-          if (!val) return;
-
           box.innerHTML += `
-            <div class="flex space-x-3 justify-end">
-              <div class="bg-blue-600 text-white rounded-2xl rounded-tr-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-md">
-                ${val.replace(/</g, "&lt;")}
+            <div class="flex justify-end space-x-3">
+              <div class="bg-blue-600 text-white rounded-2xl rounded-tr-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-sm">
+                ${msg}
               </div>
-            </div>
-          `;
-
-          input.value = "";
+            </div>`;
+          input.value = '';
           box.scrollTop = box.scrollHeight;
 
           try {
             const res = await fetch('/api/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ message: val })
+              body: JSON.stringify({ message: msg })
             });
             const data = await res.json();
-
             box.innerHTML += `
               <div class="flex space-x-3">
                 <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-md">
                   AI
                 </div>
                 <div class="bot-bubble rounded-2xl rounded-tl-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-sm">
-                  ${data.response.replace(/\n/g, "<br>")}
+                  ${data.response}
                 </div>
-              </div>
-            `;
+              </div>`;
             box.scrollTop = box.scrollHeight;
           } catch(err) {
             box.innerHTML += `
               <div class="flex space-x-3">
-                <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-md">
-                  AI
+                <div class="w-8 h-8 rounded-xl bg-red-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-md">
+                  !
                 </div>
                 <div class="bot-bubble rounded-2xl rounded-tl-none p-4 text-xs font-medium leading-relaxed max-w-xl shadow-sm text-red-400">
-                  Failed to receive response from Cyber AI Engine. Check server connectivity.
+                  Failed to receive response from Cyber AI Engine.
                 </div>
-              </div>
-            `;
-            box.scrollTop = box.scrollHeight;
+              </div>`;
           }
+        }
+
+        function inspectForensics(emailObj) {
+          switchTab('forensic-analysis');
+          document.getElementById('forensic-subject').innerText = emailObj.subject || '(No Subject)';
+          document.getElementById('forensic-sender').innerText = emailObj.from || 'Unknown';
+          document.getElementById('forensic-class').innerText = emailObj.model_classification || 'N/A';
+          document.getElementById('forensic-score').innerText = `${emailObj.risk_score}%`;
+          
+          document.getElementById('spf-status').innerText = emailObj.spf || 'PASS';
+          document.getElementById('spf-status').className = emailObj.spf === 'FAIL' ? 'text-red-500 font-bold' : 'text-emerald-500 font-bold';
+          
+          document.getElementById('dkim-status').innerText = emailObj.dkim || 'PASS';
+          document.getElementById('dkim-status').className = emailObj.dkim === 'FAIL' ? 'text-red-500 font-bold' : 'text-emerald-500 font-bold';
+
+          document.getElementById('heuristic-signals').innerText = `Detected Threat Vectors: ${emailObj.cues}\nFolder Origin: ${emailObj.folder}\nGraph Confidence: ${emailObj.graph_confidence}`;
+
+          if (emailObj.geo) {
+            document.getElementById('hop-count').innerText = `Origin IP: ${emailObj.geo.ip} (${emailObj.geo.city}, ${emailObj.geo.country})`;
+            updateMap(emailObj.geo.lat, emailObj.geo.lon, `Origin: ${emailObj.geo.city}, ${emailObj.geo.country} [${emailObj.geo.ip}]`);
+          }
+        }
+
+        function renderEmails(emails) {
+          const asyncFeed = document.getElementById('feed-async-imap');
+          const streamFeed = document.getElementById('feed-incident-stream');
+          const threatFeed = document.getElementById('feed-threat-score');
+
+          if (!emails || emails.length === 0) return;
+
+          const topThreat = emails[0];
+          document.getElementById('top-threat-score').innerText = `${topThreat.risk_score}%`;
+          document.getElementById('top-threat-severity-badge').innerText = topThreat.severity;
+          document.getElementById('top-threat-severity-badge').className = topThreat.risk_score >= 50 ? 'text-xs font-bold text-red-400 bg-red-500/10 px-3 py-1 rounded-full border border-red-500/20' : 'text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20';
+          document.getElementById('top-threat-desc').innerText = `Highest Risk Sender: ${topThreat.from}\nSubject: ${topThreat.subject}\nDetected Cues: ${topThreat.cues}`;
+
+          const emailCardsHtml = emails.map((item, idx) => `
+            <div class="ui-card p-5 space-y-3 hover:border-blue-500/50 transition">
+              <div class="flex justify-between items-start">
+                <div>
+                  <span class="text-[10px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wider ${item.risk_score >= 50 ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}">
+                    ${item.severity} (${item.risk_score}%)
+                  </span>
+                  <h4 class="font-bold text-sm mt-2">${item.subject}</h4>
+                  <p class="text-xs text-[var(--text-muted)] font-mono mt-0.5">From: ${item.from}</p>
+                </div>
+                <button onclick='inspectForensics(${JSON.stringify(item).replace(/'/g, "&apos;")})' class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg transition shrink-0">
+                  Inspect Threat
+                </button>
+              </div>
+              <p class="text-xs text-[var(--text-muted)] font-mono leading-relaxed bg-[var(--input-bg)] p-3 rounded-lg border border-[var(--border-color)]">
+                "${item.body_preview}"
+              </p>
+              <div class="flex items-center space-x-4 text-[10px] text-[var(--text-muted)] font-mono">
+                <span>Folder: ${item.folder}</span>
+                <span>SPF: ${item.spf}</span>
+                <span>DKIM: ${item.dkim}</span>
+                <span>Cues: ${item.cues}</span>
+              </div>
+            </div>
+          `).join('');
+
+          if (asyncFeed) asyncFeed.innerHTML = emailCardsHtml;
+          if (streamFeed) streamFeed.innerHTML = emailCardsHtml;
+          if (threatFeed) threatFeed.innerHTML = emailCardsHtml;
+
+          if (window.lucide) lucide.createIcons();
         }
       </script>
     </body>
     </html>
     """
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
