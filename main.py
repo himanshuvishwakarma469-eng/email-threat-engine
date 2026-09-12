@@ -88,10 +88,22 @@ async def run_block_agent():
         AGENT_STATE["block_agent"]["status"] = "EXECUTING"
         await asyncio.sleep(1.2)
         
-        high_risk_emails = [e for e in WORKER_STATE["emails"] if e.get("risk_score", 0) >= 50]
-        blocked_domains = list(set([e.get("from", "").split("@")[-1].replace(">", "").strip() for e in high_risk_emails if "@" in e.get("from", "")]))
+        emails = WORKER_STATE.get("emails", [])
+        high_risk_emails = [e for e in emails if isinstance(e, dict) and e.get("risk_score", 0) >= 50]
         
-        msg = f"Successfully updated local firewall blocklist and revoked permissions for {len(blocked_domains)} domain(s)." if blocked_domains else "No high-risk threat domains detected in queue to block."
+        blocked_domains = []
+        for e in high_risk_emails:
+            sender = e.get("from", "")
+            if "@" in sender:
+                domain = sender.split("@")[-1].replace(">", "").strip().lower()
+                if domain and domain not in blocked_domains:
+                    blocked_domains.append(domain)
+        
+        msg = (
+            f"Successfully updated local firewall blocklist and revoked permissions for {len(blocked_domains)} domain(s)."
+            if blocked_domains
+            else "No high-risk threat domains detected in queue to block."
+        )
         
         AGENT_STATE["block_agent"]["status"] = "READY"
         AGENT_STATE["block_agent"]["last_action"] = msg
@@ -110,10 +122,11 @@ async def generate_complaint_draft():
         AGENT_STATE["complaint_agent"]["status"] = "GENERATING"
         await asyncio.sleep(1.2)
         
-        high_risk = [e for e in WORKER_STATE["emails"] if e.get("risk_score", 0) >= 50]
-        target_incident = high_risk[0] if high_risk else (WORKER_STATE["emails"][0] if WORKER_STATE["emails"] else None)
+        emails = WORKER_STATE.get("emails", [])
+        high_risk = [e for e in emails if isinstance(e, dict) and e.get("risk_score", 0) >= 50]
+        target_incident = high_risk[0] if high_risk else (emails[0] if emails else None)
         
-        if not target_incident:
+        if not target_incident or not isinstance(target_incident, dict):
             target_incident = {
                 "subject": "Executive Phishing & BEC Fraud",
                 "from": "attacker@malicious-domain.com",
@@ -124,6 +137,8 @@ async def generate_complaint_draft():
                 "body_preview": "Immediate wire transfer requested to offshore account."
             }
             
+        geo = target_incident.get("geo") if isinstance(target_incident.get("geo"), dict) else {}
+
         draft_content = f"""FORMAL CYBER CRIME COMPLAINT INCIDENT REPORT
 ------------------------------------------------------------------
 INCIDENT TYPE: Business Email Compromise (BEC) / Phishing
@@ -136,9 +151,9 @@ Subject Header: {target_incident.get('subject', 'N/A')}
 Detected Threat Vectors: {target_incident.get('cues', 'N/A')}
 
 [GEOIP TRACE & INFRASTRUCTURE ATTRIBUTION]
-Originating IP Address: {target_incident.get('geo', {}).get('ip', 'N/A')}
-Geographic Location: {target_incident.get('geo', {}).get('city', 'Unknown')}, {target_incident.get('geo', {}).get('country', 'Unknown')}
-Hosting Autonomous System (ISP): {target_incident.get('geo', {}).get('isp', 'N/A')}
+Originating IP Address: {geo.get('ip', 'N/A')}
+Geographic Location: {geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')}
+Hosting Autonomous System (ISP): {geo.get('isp', 'N/A')}
 
 [PAYLOAD EXCERPT]
 "{target_incident.get('body_preview', '')}"
@@ -160,19 +175,26 @@ def decode_mime_words(s: str) -> str:
     """Decodes RFC 2047 encoded email header strings into readable UTF-8 text."""
     if not s:
         return ""
-    decoded = decode_header(s)
-    parts = []
-    for frag, enc in decoded:
-        if isinstance(frag, bytes):
-            parts.append(frag.decode(enc or "utf-8", errors="ignore"))
-        else:
-            parts.append(str(frag))
-    return "".join(parts)
+    try:
+        decoded = decode_header(s)
+        parts = []
+        for frag, enc in decoded:
+            if isinstance(frag, bytes):
+                encoding = enc or "utf-8"
+                try:
+                    parts.append(frag.decode(encoding, errors="ignore"))
+                except Exception:
+                    parts.append(frag.decode("utf-8", errors="ignore"))
+            else:
+                parts.append(str(frag))
+        return "".join(parts)
+    except Exception:
+        return str(s)
 
 
 def synthesize_ip_geolocation(domain_or_ip: str) -> dict:
     """Generates synthetic geolocation threat coordinates and IP metadata for forensic analysis."""
-    if not domain_or_ip or domain_or_ip.lower() in ["unknown", "none", ""]:
+    if not domain_or_ip or str(domain_or_ip).lower() in ["unknown", "none", ""]:
         return {
             "ip": "192.0.2.1",
             "country": "Unknown / Proxied",
@@ -317,7 +339,7 @@ def _sync_imap_polling_worker(imap_server: str, email_account: str, app_password
 
         target_folders = ["INBOX"]
         status, folder_list = mail.list()
-        if status == "OK":
+        if status == "OK" and folder_list:
             for folder in folder_list:
                 folder_str = folder.decode("utf-8", errors="ignore")
                 if any(k in folder_str.lower() for k in ["spam", "junk"]):
@@ -341,11 +363,11 @@ def _sync_imap_polling_worker(imap_server: str, email_account: str, app_password
                     continue
 
                 status, messages = mail.search(None, "ALL")
-                if status == "OK" and messages[0]:
+                if status == "OK" and messages and messages[0]:
                     mail_ids = messages[0].split()[-5:]
                     for num in reversed(mail_ids):
                         status, data = mail.fetch(num, "(BODY.PEEK[])")
-                        if status == "OK" and data[0]:
+                        if status == "OK" and data and data[0]:
                             raw = data[0][1]
                             msg_obj = email.message_from_bytes(raw)
                             clean_label = f_name.replace("[Gmail]/", "").replace('"', "")
@@ -1173,7 +1195,7 @@ def dashboard_app():
 
             outContainer.classList.remove('hidden');
             outTitle.innerText = "Block Agent Execution Results";
-            outContent.innerText = `${data.message}\n\nBlocked Domains:\n${data.blocked_domains.length > 0 ? data.blocked_domains.join('\n') : 'None'}`;
+            outContent.innerText = `${data.message}\n\nBlocked Domains:\n${(data.blocked_domains && data.blocked_domains.length > 0) ? data.blocked_domains.join('\n') : 'None'}`;
           } catch (err) {
             status.innerText = "ERROR";
             ctrlStatus.innerText = "Block Agent Error: Execution failed.";
